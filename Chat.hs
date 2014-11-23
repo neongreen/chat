@@ -20,20 +20,21 @@ main = do
     -- allow a maximum of 2 outstanding connections
     listen sock 2
     chan <- newChan
-    mainLoop sock chan
+    mainLoop sock chan 0
  
-mainLoop :: Socket -> Chan Msg -> IO ()
-mainLoop sock chan = do
+mainLoop :: Socket -> Chan Msg -> Int -> IO ()
+mainLoop sock chan id = do
     conn <- accept sock
-    forkIO (runConn conn chan)
+    forkIO (runConn conn chan id)
     putStrLn "connection attempt"
-    mainLoop sock chan
+    mainLoop sock chan (id+1)
              
-runConn :: (Socket, SockAddr) -> Chan Msg -> IO ()
-runConn (sock, _) chan = do
+runConn :: (Socket, SockAddr) -> Chan Msg -> Int -> IO ()
+runConn (sock, _) chan id = do
     let broadcast msg = writeChan chan msg
     hdl <- socketToHandle sock ReadWriteMode
     hSetBuffering hdl NoBuffering
+    writeChan chan ("user " ++ show id ++ " connected\n")
     chan' <- dupChan chan
     -- fork off thread for reading from the duplicated channel
     forkIO $ fix $ \loop -> do
