@@ -8,7 +8,7 @@ import Network.Socket
 import System.IO
 
 type Msg = (Int,String)
- 
+
 main :: IO ()
 main = do
     -- create socket
@@ -21,14 +21,14 @@ main = do
     listen sock 2
     chan <- newChan
     mainLoop sock chan 0
- 
+
 mainLoop :: Socket -> Chan Msg -> Int -> IO ()
 mainLoop sock chan id = do
     conn <- accept sock
     forkIO (runConn conn chan id)
     putStrLn "connection attempt"
     mainLoop sock chan (id+1)
-             
+
 runConn :: (Socket, SockAddr) -> Chan Msg -> Int -> IO ()
 runConn (sock, _) chan id = do
     let broadcast msg = writeChan chan (id,"["++show id++"] "++msg)
