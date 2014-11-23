@@ -4,10 +4,13 @@ import Control.Concurrent
 import Control.Concurrent.Chan
 import Control.Monad
 import Control.Monad.Fix (fix)
+import Data.Time.Format
+import Data.Time.LocalTime
 import Network.Socket
 import System.IO
+import System.Locale (defaultTimeLocale)
 
-type Msg = (Int,String)
+type Msg = (Int,ZonedTime,String)
 
 main :: IO ()
 main = do
@@ -31,20 +34,24 @@ mainLoop sock chan id = do
 
 runConn :: (Socket, SockAddr) -> Chan Msg -> Int -> IO ()
 runConn (sock, _) chan id = do
-    let broadcast msg = writeChan chan (id,"["++show id++"] "++msg)
+    let broadcast msg = do
+          t <- getZonedTime
+          let time = formatTime defaultTimeLocale "%T" t
+              line = "["++time++"] " ++ "["++show id++"] " ++ msg
+          writeChan chan (id,t,line)
     hdl <- socketToHandle sock ReadWriteMode
     hSetBuffering hdl NoBuffering
     broadcast ("[user " ++ show id ++ " connected]\n")
     chan' <- dupChan chan
     -- fork off thread for reading from the duplicated channel
     forkIO $ fix $ \loop -> do
-        (i,line) <- readChan chan'
+        (i,t,line) <- readChan chan'
         if i /= id
            then hPutStrLn hdl line
            else return ()
         loop
     -- read lines from socket and echo them back to the user
     fix $ \loop -> do
-        line <- liftM init (hGetLine hdl) 
+        line <- liftM init (hGetLine hdl)
         broadcast line
         loop
