@@ -7,7 +7,7 @@ import Control.Monad.Fix (fix)
 import Network.Socket
 import System.IO
 
-type Msg = String
+type Msg = (Int,String)
  
 main :: IO ()
 main = do
@@ -31,15 +31,17 @@ mainLoop sock chan id = do
              
 runConn :: (Socket, SockAddr) -> Chan Msg -> Int -> IO ()
 runConn (sock, _) chan id = do
-    let broadcast msg = writeChan chan msg
+    let broadcast msg = writeChan chan (id,"["++show id++"] "++msg)
     hdl <- socketToHandle sock ReadWriteMode
     hSetBuffering hdl NoBuffering
-    writeChan chan ("user " ++ show id ++ " connected\n")
+    broadcast ("[user " ++ show id ++ " connected]\n")
     chan' <- dupChan chan
     -- fork off thread for reading from the duplicated channel
     forkIO $ fix $ \loop -> do
-        line <- readChan chan'
-        hPutStrLn hdl line
+        (i,line) <- readChan chan'
+        if i /= id
+           then hPutStrLn hdl line
+           else return ()
         loop
     -- read lines from socket and echo them back to the user
     fix $ \loop -> do
