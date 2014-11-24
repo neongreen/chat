@@ -1,5 +1,6 @@
 module Chat where
 
+import           Control.Applicative
 import           Control.Concurrent
 import           Control.Concurrent.Chan
 import           Control.Monad
@@ -7,6 +8,7 @@ import           Control.Monad.Fix (fix)
 import           Data.IORef
 import           Data.List (isPrefixOf)
 import qualified Data.Map as M
+import           Data.Maybe (fromJust)
 import           Data.Time.Format
 import           Data.Time.LocalTime
 import           Network.Socket
@@ -39,22 +41,23 @@ mainLoop sock chan id nref = do
 
 runConn :: (Socket, SockAddr) -> Chan Msg -> Int -> Users -> IO ()
 runConn (sock, _) chan id nref = do
-    let broadcast nick msg = do
+    let broadcast msg = do
           t <- getZonedTime
+          nick <- fromJust . M.lookup id <$> readIORef nref
           let time = formatTime defaultTimeLocale "%T" t
               line = "["++time++"] " ++ nick ++ ": " ++ msg
           writeChan chan (id,t,nick,line)
     hdl <- socketToHandle sock ReadWriteMode
     hSetBuffering hdl NoBuffering
     hPutStr hdl "enter a nickname: "
-    nick <- fix $ \loop -> do
+    fix $ \loop -> do
         nicks <- readIORef nref
         line <- liftM init (hGetLine hdl)
         let isTaken = line `elem` M.elems nicks
         if isTaken
           then hPutStr hdl "taken! try again: " >> loop
-          else modifyIORef' nref (M.insert id line) >> return line
-    broadcast nick ("[user " ++ show id ++ " connected]")
+          else modifyIORef' nref (M.insert id line)
+    broadcast ("[user " ++ show id ++ " connected]")
     chan' <- dupChan chan
     -- fork off thread for reading from the duplicated channel
     forkIO $ fix $ \loop -> do
@@ -66,5 +69,13 @@ runConn (sock, _) chan id nref = do
     -- read lines from socket and echo them back to the user
     fix $ \loop -> do
         line <- liftM init (hGetLine hdl)
-        broadcast nick line
+        if "/nick " `isPrefixOf` line
+           then do
+             nicks <- readIORef nref
+             let new = drop 6 line
+                 isTaken = new `elem` M.elems nicks
+             if isTaken
+                then hPutStrLn hdl "already taken!"
+                else modifyIORef' nref (M.insert id new)
+           else broadcast line
         loop
