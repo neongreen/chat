@@ -23,5 +23,6 @@ library
                      , network
                      , time
                      , old-locale
+                     , containers
   -- hs-source-dirs:      
   default-language:    Haskell2010
