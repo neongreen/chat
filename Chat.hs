@@ -6,8 +6,9 @@ import           Control.Concurrent.Chan
 import           Control.Monad
 import           Control.Monad.Fix (fix)
 import           Data.IORef
-import           Data.List (isPrefixOf)
+import           Data.List (isPrefixOf,isInfixOf)
 import           Data.List.Split (chunksOf)
+import           Data.List.Utils
 import qualified Data.Map as M
 import           Data.Maybe (fromJust)
 import qualified Data.Text as T
@@ -46,7 +47,9 @@ runConn hdl chan id nref = do
           t <- getZonedTime
           nick <- fromJust . M.lookup id <$> readIORef nref
           let time = formatTime defaultTimeLocale "%T" t
-              line = "["++time++"] " ++ nick ++ ": " ++ msg
+              line = if "/me" `isInfixOf` msg
+                        then "["++time++"] " ++ replace "/me" nick msg
+                        else "["++time++"] " ++ nick ++ ": " ++ msg
           writeChan chan (id,t,nick,line)
     hPutStrLn hdl "enter a nickname"
     fix $ \loop -> do
