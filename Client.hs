@@ -14,6 +14,7 @@ import           System.IO
 
 data UI = UI
   { addMessage :: String -> IO ()
+  , setStatus  :: String -> IO ()
   }
 
 main :: IO ()
@@ -47,10 +48,16 @@ runUI :: Chan String  -- ^ A channel to send lines of input to.
                       --   to operate on the created UI.
 runUI output = do
   -- Create some widgets.
+  status <- plainText (T.pack "")   -- Statusbar.
   messages <- newList 1             -- List of messages.
   newMessage <- editWidget          -- Editbox for user's message.
-  box <- vBox messages newMessage   -- Container for messages + editbox.
-  ui <- centered box                -- No idea really.
+  -- Gather them into a box, stacking vertically.
+  box <- return status <-->
+         return messages <-->
+         return newMessage
+  -- Center the UI in window.
+  ui <- centered box
+  -- Give the editbox focus.
   fg <- newFocusGroup
   addToFocusGroup fg newMessage
   c <- newCollection
@@ -71,5 +78,8 @@ runUI output = do
           addLine (T.pack line) messages
         -- Wait a bit... for reasons unknown.
         threadDelay 10000
+  let setStatus t = setTextWithAttrs status [(T.pack t, fgColor green)]
   forkIO $ runUi c defaultContext
-  return $ UI { addMessage = addMessage }
+  return $ UI { addMessage = addMessage
+              , setStatus  = setStatus
+              }
