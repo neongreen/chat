@@ -12,18 +12,27 @@ import           Network
 import           System.Exit
 import           System.IO
 
+data UI = UI
+  { addMessage :: String -> IO ()
+  }
+
 main :: IO ()
 main = do
   hdl <- connect "localhost"
-  inputChan  <- newChan
-  outputChan <- newChan
+  inputChan <- newChan
+  ui <- runUI inputChan
+  -- Handle incoming messages.
   forkIO $ forever $ do
     line <- hGetLine hdl
-    writeChan inputChan line
-  forkIO $ forever $ do
-    line <- readChan outputChan
+    addMessage ui line
+  -- Handle user input.
+  forever $ do
+    line <- readChan inputChan
+    -- If the command is “/quit”, well, we quit.
+    when (line == "/quit") exitSuccess
+    -- Otherwise we send the message to the server.
     hPutStrLn hdl line
-  runUI (inputChan, outputChan)
+  return ()
 
 -- | Connect to the server.
 connect :: HostName -> IO Handle
@@ -32,10 +41,11 @@ connect host = do
   hSetBuffering hdl NoBuffering
   return hdl
 
--- | Given channels to get messages from and send messages to, start the
--- client GUI.
-runUI :: (Chan String, Chan String) -> IO ()
-runUI (input, output) = do
+-- | Create the client UI.
+runUI :: Chan String  -- ^ A channel to send lines of input to.
+      -> IO UI        -- ^ The resulting structure contains various functions
+                      --   to operate on the created UI.
+runUI output = do
   -- Create some widgets.
   messages <- newList 1             -- List of messages.
   newMessage <- editWidget          -- Editbox for user's message.
@@ -47,22 +57,19 @@ runUI (input, output) = do
   addToCollection c ui fg
   -- Handle Enter in the editbox.
   newMessage `onActivate` \this -> do
-    msg <- getEditText this
-    -- If the command is “/quit”, well, we quit.
-    when (msg == T.pack "/quit") exitSuccess
-    writeChan output (T.unpack msg)
+    line <- getEditText this
+    writeChan output (T.unpack line)
     setEditText this (T.pack "")
-  -- Read server messages as they come and add them to the list.
-  forkIO . forever $ readChan input >>= \m -> do
-    let addMessage line list = do
-          text <- textWidget wrap line
-          addToList list line text
-          scrollDown list
-    schedule $ do
-      width <- regionWidth <$> getCurrentSize messages
-      -- Break the gotten message in chunks and output them one by one.
-      forM_ (chunksOf width m) $ \line ->
-        addMessage (T.pack line) messages
-      -- Wait a bit... for reasons unknown.
-      threadDelay 10000
-  runUi c defaultContext
+  let addLine line list = do
+        text <- textWidget wrap line
+        addToList list line text
+        scrollDown list
+  let addMessage msg = schedule $ do
+        width <- regionWidth <$> getCurrentSize messages
+        -- Break the gotten message in chunks and output them one by one.
+        forM_ (chunksOf width msg) $ \line ->
+          addLine (T.pack line) messages
+        -- Wait a bit... for reasons unknown.
+        threadDelay 10000
+  forkIO $ runUi c defaultContext
+  return $ UI { addMessage = addMessage }
